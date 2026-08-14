@@ -1,0 +1,21 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+
+# Data files (if you want to keep them private)
+backend/data/*.json
+!backend/data/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.dbnode_modules/ 
+.env 
+backend/data/ 
