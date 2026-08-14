@@ -9,7 +9,10 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static('frontend'));
+
+// ===== CORRECT PATH FOR FRONTEND =====
+const frontendPath = path.join(__dirname, '..', 'frontend');
+const SITE_PASSWORD = process.env.SITE_PASSWORD || 'default123';
 
 // Data file paths
 const USERS_FILE = path.join(__dirname, 'data', 'users.json');
@@ -71,7 +74,68 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// API Endpoints
+// Middleware to check if user has entered site password
+const checkSitePassword = (req, res, next) => {
+    // Skip password check for API endpoints
+    if (req.path.startsWith('/api/')) {
+        return next();
+    }
+    
+    // Check if user has a valid site session
+    const sessionToken = req.headers['x-site-session'] || req.cookies?.siteSession;
+    
+    if (!sessionToken) {
+        // If trying to access the main page, show password form
+        if (req.path === '/' || req.path === '/index.html') {
+            return res.sendFile(path.join(frontendPath, 'gate.html'));
+        }
+        return res.status(401).send('Access Denied');
+    }
+    
+    // Verify session token
+    try {
+        const decoded = jwt.verify(sessionToken, process.env.JWT_SECRET);
+        if (decoded.type === 'site-access') {
+            return next();
+        }
+    } catch (err) {
+        // Invalid token
+        if (req.path === '/' || req.path === '/index.html') {
+            return res.sendFile(path.join(frontendPath, 'gate.html'));
+        }
+        return res.status(401).send('Access Denied');
+    }
+};
+
+// Apply password protection to ALL static files
+app.use(express.static(frontendPath));
+app.use(checkSitePassword);
+
+// ===== AUTH ENDPOINT FOR SITE PASSWORD =====
+app.post('/api/site-auth', (req, res) => {
+    const { password } = req.body;
+    
+    if (password === SITE_PASSWORD) {
+        // Generate site access token (short lived)
+        const token = jwt.sign(
+            { type: 'site-access', timestamp: Date.now() },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+        
+        res.json({
+            success: true,
+            token: token
+        });
+    } else {
+        res.status(401).json({
+            success: false,
+            error: 'Invalid password'
+        });
+    }
+});
+
+// ===== API ENDPOINTS =====
 
 // 1. Register/Login script (HWID authentication)
 app.post('/api/auth', (req, res) => {
@@ -352,7 +416,7 @@ app.get('/api/stats', authenticateToken, (req, res) => {
 
 // Serve frontend
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
+    res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 // Start server
