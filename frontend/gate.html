@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Required</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .gate {
+            width: 340px;
+            padding: 40px;
+            background: #111;
+            border: 1px solid #1a1a1a;
+            border-radius: 6px;
+        }
+        
+        .gate h1 {
+            font-weight: 300;
+            font-size: 24px;
+            color: #e0e0e0;
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+        }
+        
+        .gate p {
+            color: #444;
+            font-size: 13px;
+            margin-bottom: 28px;
+        }
+        
+        .gate input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            margin-bottom: 12px;
+        }
+        
+        .gate input:focus {
+            border-color: #2a2a2a;
+        }
+        
+        .gate button {
+            width: 100%;
+            padding: 12px;
+            background: #1a1a1a;
+            border: none;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        
+        .gate button:hover {
+            background: #252525;
+        }
+        
+        .gate-error {
+            color: #ff3b3b;
+            font-size: 13px;
+            margin-top: 12px;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="gate">
+        <h1>Access</h1>
+        <p>Enter password to continue</p>
+        <form id="gateForm">
+            <input type="password" id="gatePassword" placeholder="Password" autofocus>
+            <button type="submit">Unlock</button>
+        </form>
+        <div id="gateError" class="gate-error"></div>
+    </div>
+
+    <script>
+        document.getElementById('gateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const password = document.getElementById('gatePassword').value;
+            const errorEl = document.getElementById('gateError');
+            
+            try {
+                const response = await fetch('/api/site-auth', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.cookie = `siteSession=${data.token}; path=/; max-age=3600`;
+                    window.location.reload();
+                } else {
+                    errorEl.textContent = 'Invalid password';
+                    document.getElementById('gatePassword').value = '';
+                    document.getElementById('gatePassword').focus();
+                }
+            } catch (err) {
+                errorEl.textContent = 'Connection error';
+            }
+        });
+    </script>
+</body>
+</html>
