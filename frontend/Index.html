@@ -3,80 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roblox Crasher Manager</title>
+    <title>Control Panel</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>⚡ Roblox Crasher Manager</h1>
-            <div class="login-status">
-                <span id="statusText">Not Authenticated</span>
-                <button id="loginBtn" class="btn btn-primary">Login</button>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <span class="logo">Control</span>
+                <div class="header-right">
+                    <span id="connectionStatus" class="status-dot offline"></span>
+                    <button id="logoutBtn" class="btn logout-btn">Exit</button>
+                </div>
             </div>
-        </div>
 
-        <!-- Login Modal -->
-        <div id="loginModal" class="modal">
-            <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Owner Login</h2>
-                <form id="loginForm">
-                    <input type="password" id="passwordInput" placeholder="Enter owner password" required>
-                    <button type="submit" class="btn btn-primary">Login</button>
-                </form>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-label">Registered</span>
+                    <span class="stat-value" id="totalUsers">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Connected</span>
+                    <span class="stat-value" id="activeUsers">0</span>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <button id="addUserBtn" class="btn btn-add">Add User</button>
+                <button id="refreshBtn" class="btn btn-refresh">Refresh</button>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>HWID</th>
+                            <th>Status</th>
+                            <th>Lag</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                        <tr><td colspan="5" class="empty-state">No users registered</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
         <!-- Add User Modal -->
         <div id="addUserModal" class="modal">
-            <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Add New User</h2>
+            <div class="modal-box">
+                <div class="modal-header">
+                    <span>Add User</span>
+                    <span class="modal-close">&times;</span>
+                </div>
                 <form id="addUserForm">
                     <input type="text" id="hwidInput" placeholder="HWID" required>
                     <input type="text" id="usernameInput" placeholder="Username (optional)">
-                    <button type="submit" class="btn btn-success">Add User</button>
+                    <button type="submit" class="btn btn-add">Add User</button>
                 </form>
             </div>
-        </div>
-
-        <!-- Stats -->
-        <div class="stats">
-            <div class="stat-card">
-                <h3>Total Users</h3>
-                <span id="totalUsers">0</span>
-            </div>
-            <div class="stat-card">
-                <h3>Active Users</h3>
-                <span id="activeUsers">0</span>
-            </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="actions">
-            <button id="addUserBtn" class="btn btn-success">+ Add User</button>
-            <button id="refreshBtn" class="btn btn-primary">🔄 Refresh</button>
-        </div>
-
-        <!-- User Table -->
-        <div class="user-table-wrapper">
-            <table id="userTable">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>HWID</th>
-                        <th>Status</th>
-                        <th>Lag %</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="userTableBody">
-                    <tr>
-                        <td colspan="5" class="no-data">Loading users...</td>
-                    </tr>
-                </tbody>
-            </table>
         </div>
     </div>
 
