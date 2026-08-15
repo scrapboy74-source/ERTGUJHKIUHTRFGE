@@ -1,93 +1,121 @@
-// Check if we have site session (cookie)
-function checkSiteSession() {
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-        if (cookie.trim().startsWith('siteSession=')) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// If no site session, redirect to gate
-if (!checkSiteSession()) {
-    window.location.href = '/gate.html';
-}
-
-let currentToken = null;
-let currentUser = null;
-
-// DOM Elements
-const statusDot = document.getElementById('connectionStatus');
-const userTableBody = document.getElementById('userTableBody');
-const totalUsersSpan = document.getElementById('totalUsers');
-const activeUsersSpan = document.getElementById('activeUsers');
-
-// Check for saved admin token
-const savedToken = localStorage.getItem('adminToken');
-if (savedToken) {
-    currentToken = savedToken;
-    fetchUsers();
-}
-
-// Event Listeners
-document.getElementById('logoutBtn').addEventListener('click', () => {
-    localStorage.removeItem('adminToken');
-    currentToken = null;
-    // Clear site session too
-    document.cookie = 'siteSession=; path=/; max-age=0';
-    window.location.href = '/gate.html';
-});
-
-document.getElementById('addUserBtn').addEventListener('click', () => {
-    if (!currentToken) {
-        alert('Login required');
-        return;
-    }
-    document.getElementById('addUserModal').style.display = 'flex';
-});
-
-document.getElementById('refreshBtn').addEventListener('click', fetchUsers);
-
-// Modal close
-document.querySelector('.modal-close')?.addEventListener('click', () => {
-    document.getElementById('addUserModal').style.display = 'none';
-});
-
-window.addEventListener('click', (e) => {
-    if (e.target === document.getElementById('addUserModal')) {
-        document.getElementById('addUserModal').style.display = 'none';
-    }
-});
-
-// Add user form
-document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+// ===== PASSWORD GATE =====
+document.getElementById('gateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const hwid = document.getElementById('hwidInput').value.trim();
-    const username = document.getElementById('usernameInput').value.trim();
     
-    if (!hwid) {
-        alert('HWID is required');
+    const password = document.getElementById('gatePassword').value;
+    const errorEl = document.getElementById('gateError');
+    const btn = document.getElementById('unlockBtn');
+    
+    if (!password) {
+        errorEl.textContent = 'Please enter password';
         return;
     }
+    
+    errorEl.textContent = '';
+    btn.textContent = 'Checking...';
+    btn.disabled = true;
     
     try {
-        const response = await fetch('/api/users/add', {
+        const response = await fetch('/api/site-auth', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${currentToken}`
-            },
-            body: JSON.stringify({ hwid, username })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
         });
         
         const data = await response.json();
         
         if (data.success) {
-            document.getElementById('addUserModal').style.display = 'none';
-            document.getElementById('hwidInput').value = '';
-            document.getElementById('usernameInput').value = '';
-            fetchUsers();
+            document.getElementById('gateBox').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            localStorage.setItem('siteToken', data.token);
+            loadAllData();
+        } else {
+            errorEl.textContent = 'Invalid password';
+            document.getElementById('gatePassword').value = '';
+            document.getElementById('gatePassword').focus();
+            btn.textContent = 'Unlock';
+            btn.disabled = false;
+        }
+    } catch (err) {
+        errorEl.textContent = 'Connection error. Try again.';
+        btn.textContent = 'Unlock';
+        btn.disabled = false;
+    }
+});
+
+// ===== TABS =====
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        // Remove active from all tabs
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Add active to clicked tab
+        btn.classList.add('active');
+        const tabId = btn.dataset.tab;
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+    });
+});
+
+// ===== MAIN APP =====
+let adminToken = null;
+let currentUser = null;
+let owners = [];
+let users = [];
+let refreshInterval = null;
+
+// DOM Elements
+const ownersTableBody = document.getElementById('ownersTableBody');
+const usersTableBody = document.getElementById('usersTableBody');
+const onlineUsersSpan = document.getElementById('onlineUsers');
+const offlineUsersSpan = document.getElementById('offlineUsers');
+const totalUsersSpan = document.getElementById('totalUsers');
+const statusText = document.getElementById('statusText');
+const userDisplay = document.getElementById('userDisplay');
+
+// Check for saved admin token
+const savedToken = localStorage.getItem('adminToken');
+if (savedToken) {
+    adminToken = savedToken;
+}
+
+// ===== LOGOUT =====
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('siteToken');
+    adminToken = null;
+    currentUser = null;
+    document.getElementById('mainApp').style.display = 'none';
+    document.getElementById('gateBox').style.display = 'block';
+    document.getElementById('gatePassword').value = '';
+    document.getElementById('gatePassword').focus();
+    if (refreshInterval) clearInterval(refreshInterval);
+});
+
+// ===== ADD OWNER =====
+document.getElementById('addOwnerBtn').addEventListener('click', async () => {
+    const username = document.getElementById('ownerUsernameInput').value.trim();
+    
+    if (!username) {
+        alert('Please enter a Roblox username');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/owners/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ username })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('ownerUsernameInput').value = '';
+            loadAllData();
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));
         }
@@ -96,71 +124,200 @@ document.getElementById('addUserForm').addEventListener('submit', async (e) => {
     }
 });
 
-// Fetch users
-async function fetchUsers() {
-    if (!currentToken) {
-        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Login required</td></tr>';
+// ===== SETTINGS =====
+// Default Kick Message
+document.getElementById('saveKickMsgBtn').addEventListener('click', async () => {
+    const message = document.getElementById('defaultKickMessage').value.trim();
+    if (!message) {
+        alert('Please enter a kick message');
         return;
     }
     
     try {
-        const response = await fetch('/api/users', {
+        const response = await fetch('/api/settings/kick-message', {
+            method: 'POST',
             headers: {
-                'Authorization': `Bearer ${currentToken}`
-            }
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ message })
         });
         
-        if (response.status === 401) {
-            localStorage.removeItem('adminToken');
-            currentToken = null;
-            userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Session expired</td></tr>';
-            statusDot.className = 'status-dot offline';
-            return;
-        }
-        
-        const users = await response.json();
-        displayUsers(users);
-        
-        // Get stats
-        const statsResponse = await fetch('/api/stats', {
-            headers: {
-                'Authorization': `Bearer ${currentToken}`
-            }
-        });
-        
-        if (statsResponse.ok) {
-            const stats = await statsResponse.json();
-            totalUsersSpan.textContent = stats.totalUsers || 0;
-            activeUsersSpan.textContent = stats.activeUsers || 0;
-            
-            // Update status dot
-            if (stats.activeUsers > 0) {
-                statusDot.className = 'status-dot online';
-            } else {
-                statusDot.className = 'status-dot offline';
-            }
+        const data = await response.json();
+        if (data.success) {
+            alert('Kick message saved!');
         }
     } catch (error) {
-        console.error('Error:', error);
-        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Connection error</td></tr>';
+        alert('Connection error');
     }
+});
+
+// Preset messages
+document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const msg = btn.dataset.msg;
+        document.getElementById('defaultKickMessage').value = msg;
+        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    });
+});
+
+// Default Lag
+document.getElementById('defaultLagSlider').addEventListener('input', (e) => {
+    document.getElementById('defaultLagValue').textContent = e.target.value + '%';
+});
+
+document.getElementById('saveLagBtn').addEventListener('click', async () => {
+    const lag = document.getElementById('defaultLagSlider').value;
+    
+    try {
+        const response = await fetch('/api/settings/default-lag', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ lagPercentage: parseInt(lag) })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert('Default lag saved!');
+        }
+    } catch (error) {
+        alert('Connection error');
+    }
+});
+
+// Session Timeout
+document.getElementById('sessionTimeout').addEventListener('change', async () => {
+    const timeout = document.getElementById('sessionTimeout').value;
+    
+    try {
+        const response = await fetch('/api/settings/session-timeout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ timeout: parseInt(timeout) })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert('Session timeout saved!');
+        }
+    } catch (error) {
+        alert('Connection error');
+    }
+});
+
+// ===== LOAD DATA =====
+async function loadAllData() {
+    if (!adminToken) {
+        // Try to login as admin
+        const password = prompt('Enter admin password to access controls:');
+        if (password) {
+            try {
+                const response = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        hwid: 'owner', 
+                        password: password 
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    adminToken = data.token;
+                    currentUser = data.user;
+                    localStorage.setItem('adminToken', adminToken);
+                    userDisplay.textContent = '👑 ' + (data.user.username || 'Owner');
+                    loadAllData();
+                    return;
+                } else {
+                    alert('Invalid admin password');
+                    return;
+                }
+            } catch (error) {
+                alert('Connection error');
+                return;
+            }
+        }
+        return;
+    }
+    
+    try {
+        // Load owners
+        const ownersResponse = await fetch('/api/owners', {
+            headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        
+        if (ownersResponse.ok) {
+            owners = await ownersResponse.json();
+            displayOwners(owners);
+        }
+        
+        // Load users
+        const usersResponse = await fetch('/api/users', {
+            headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        
+        if (usersResponse.ok) {
+            users = await usersResponse.json();
+            displayUsers(users);
+            updateStats(users);
+        }
+        
+        // Update status
+        statusText.textContent = 'Online';
+        statusText.className = 'status-online';
+        
+    } catch (error) {
+        console.error('Error loading data:', error);
+        statusText.textContent = 'Offline';
+        statusText.className = 'status-offline';
+    }
+}
+
+function displayOwners(owners) {
+    if (!owners || owners.length === 0) {
+        ownersTableBody.innerHTML = '<tr><td colspan="4" class="empty-state">No owners registered</td></tr>';
+        return;
+    }
+    
+    ownersTableBody.innerHTML = owners.map(owner => `
+        <tr>
+            <td><strong>${owner.username}</strong></td>
+            <td style="font-size:12px;color:#555;">${owner.hwid || 'Not set'}</td>
+            <td>
+                <span class="status-badge ${owner.isActive ? 'online' : 'offline'}">
+                    ${owner.isActive ? 'Online' : 'Offline'}
+                </span>
+            </td>
+            <td>
+                <button class="action-btn danger btn-sm" onclick="removeOwner('${owner.id}')">Remove</button>
+            </td>
+        </tr>
+    `).join('');
 }
 
 function displayUsers(users) {
     if (!users || users.length === 0) {
-        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No users registered</td></tr>';
+        usersTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No users executing script</td></tr>';
         return;
     }
     
-    userTableBody.innerHTML = users.map(user => `
+    usersTableBody.innerHTML = users.map(user => `
         <tr>
             <td>${user.username || 'Unknown'}</td>
             <td style="font-size:12px;color:#555;">${user.hwid.slice(0, 16)}...</td>
             <td>
                 <span class="status-badge ${user.isActive ? 'online' : 'offline'}">
-                    ${user.isActive ? 'Connected' : 'Offline'}
+                    ${user.isActive ? 'Online' : 'Offline'}
                 </span>
-                ${user.isOwner ? ' <span style="color:#333;">*</span>' : ''}
             </td>
             <td>
                 <input type="range" 
@@ -176,14 +333,13 @@ function displayUsers(users) {
             <td>
                 <div class="actions-cell">
                     ${currentUser?.isOwner ? `
-                        <button class="action-btn danger" onclick="crashUser('${user.id}')">Crash</button>
+                        <button class="action-btn danger btn-sm" onclick="crashUser('${user.id}')">Crash</button>
                         <input type="text" 
                                class="kick-input" 
                                placeholder="Kick message"
                                id="kickMsg_${user.id}"
                                value="${user.settings?.kickMessage || ''}">
-                        <button class="action-btn" onclick="kickUser('${user.id}')">Kick</button>
-                        <button class="action-btn danger" onclick="removeUser('${user.id}')">Remove</button>
+                        <button class="action-btn btn-sm" onclick="kickUser('${user.id}')">Kick</button>
                     ` : `
                         <span style="color:#333;font-size:12px;">Restricted</span>
                     `}
@@ -193,7 +349,16 @@ function displayUsers(users) {
     `).join('');
 }
 
-// Actions
+function updateStats(users) {
+    const online = users.filter(u => u.isActive).length;
+    const offline = users.filter(u => !u.isActive).length;
+    
+    onlineUsersSpan.textContent = online;
+    offlineUsersSpan.textContent = offline;
+    totalUsersSpan.textContent = users.length;
+}
+
+// ===== ACTIONS =====
 async function crashUser(userId) {
     if (!confirm('Crash this user?')) return;
     
@@ -201,13 +366,14 @@ async function crashUser(userId) {
         const response = await fetch(`/api/users/${userId}/crash`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${currentToken}`
+                'Authorization': `Bearer ${adminToken}`
             }
         });
         
         const data = await response.json();
         if (data.success) {
-            fetchUsers();
+            alert('User crashed!');
+            loadAllData();
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));
         }
@@ -218,7 +384,7 @@ async function crashUser(userId) {
 
 async function kickUser(userId) {
     const messageInput = document.getElementById(`kickMsg_${userId}`);
-    const message = messageInput?.value || 'Connection lost';
+    const message = messageInput?.value || 'Your connection has been lost. Please try again later.';
     
     if (!confirm(`Kick user?`)) return;
     
@@ -227,14 +393,15 @@ async function kickUser(userId) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${currentToken}`
+                'Authorization': `Bearer ${adminToken}`
             },
             body: JSON.stringify({ message })
         });
         
         const data = await response.json();
         if (data.success) {
-            fetchUsers();
+            alert('User kicked!');
+            loadAllData();
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));
         }
@@ -243,20 +410,20 @@ async function kickUser(userId) {
     }
 }
 
-async function removeUser(userId) {
-    if (!confirm('Remove this user?')) return;
+async function removeOwner(ownerId) {
+    if (!confirm('Remove this owner?')) return;
     
     try {
-        const response = await fetch(`/api/users/${userId}`, {
+        const response = await fetch(`/api/owners/${ownerId}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${currentToken}`
+                'Authorization': `Bearer ${adminToken}`
             }
         });
         
         const data = await response.json();
         if (data.success) {
-            fetchUsers();
+            loadAllData();
         } else {
             alert('Error: ' + (data.error || 'Unknown error'));
         }
@@ -266,7 +433,7 @@ async function removeUser(userId) {
 }
 
 async function updateLag(slider) {
-    if (!currentToken || !currentUser?.isOwner) return;
+    if (!adminToken || !currentUser?.isOwner) return;
     
     const userId = slider.dataset.userid;
     const value = parseInt(slider.value);
@@ -276,7 +443,7 @@ async function updateLag(slider) {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${currentToken}`
+                'Authorization': `Bearer ${adminToken}`
             },
             body: JSON.stringify({ lagPercentage: value })
         });
@@ -285,8 +452,18 @@ async function updateLag(slider) {
     }
 }
 
+// ===== AUTO-REFRESH =====
+setInterval(loadAllData, 10000); // Refresh every 10 seconds
+
+// ===== LOAD ON START =====
+if (localStorage.getItem('siteToken')) {
+    document.getElementById('gateBox').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    loadAllData();
+}
+
 // Make functions global
 window.crashUser = crashUser;
 window.kickUser = kickUser;
-window.removeUser = removeUser;
+window.removeOwner = removeOwner;
 window.updateLag = updateLag;
