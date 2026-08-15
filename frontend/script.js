@@ -28,7 +28,9 @@ document.getElementById('gateForm').addEventListener('submit', async (e) => {
             document.getElementById('gateBox').style.display = 'none';
             document.getElementById('mainApp').style.display = 'block';
             localStorage.setItem('siteToken', data.token);
-            loadAllData();
+            // Show admin login
+            document.getElementById('adminLoginOverlay').style.display = 'flex';
+            document.getElementById('adminPasswordInput').focus();
         } else {
             errorEl.textContent = 'Invalid password';
             document.getElementById('gatePassword').value = '';
@@ -43,14 +45,61 @@ document.getElementById('gateForm').addEventListener('submit', async (e) => {
     }
 });
 
+// ===== ADMIN LOGIN =====
+document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const password = document.getElementById('adminPasswordInput').value;
+    const errorEl = document.getElementById('adminLoginError');
+    const btn = document.getElementById('adminLoginBtn');
+    
+    if (!password) {
+        errorEl.textContent = 'Please enter admin password';
+        return;
+    }
+    
+    errorEl.textContent = '';
+    btn.textContent = 'Checking...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                hwid: 'owner', 
+                password: password 
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            adminToken = data.token;
+            currentUser = data.user;
+            localStorage.setItem('adminToken', adminToken);
+            document.getElementById('adminLoginOverlay').style.display = 'none';
+            document.getElementById('userDisplay').textContent = '👑 ' + (data.user.username || 'Owner');
+            loadAllData();
+        } else {
+            errorEl.textContent = 'Invalid admin password';
+            document.getElementById('adminPasswordInput').value = '';
+            document.getElementById('adminPasswordInput').focus();
+            btn.textContent = 'Login';
+            btn.disabled = false;
+        }
+    } catch (err) {
+        errorEl.textContent = 'Connection error. Try again.';
+        btn.textContent = 'Login';
+        btn.disabled = false;
+    }
+});
+
 // ===== TABS =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        // Remove active from all tabs
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        
-        // Add active to clicked tab
         btn.classList.add('active');
         const tabId = btn.dataset.tab;
         document.getElementById(`tab-${tabId}`).classList.add('active');
@@ -87,6 +136,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     currentUser = null;
     document.getElementById('mainApp').style.display = 'none';
     document.getElementById('gateBox').style.display = 'block';
+    document.getElementById('adminLoginOverlay').style.display = 'none';
     document.getElementById('gatePassword').value = '';
     document.getElementById('gatePassword').focus();
     if (refreshInterval) clearInterval(refreshInterval);
@@ -125,7 +175,6 @@ document.getElementById('addOwnerBtn').addEventListener('click', async () => {
 });
 
 // ===== SETTINGS =====
-// Default Kick Message
 document.getElementById('saveKickMsgBtn').addEventListener('click', async () => {
     const message = document.getElementById('defaultKickMessage').value.trim();
     if (!message) {
@@ -152,7 +201,6 @@ document.getElementById('saveKickMsgBtn').addEventListener('click', async () => 
     }
 });
 
-// Preset messages
 document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const msg = btn.dataset.msg;
@@ -162,7 +210,6 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
     });
 });
 
-// Default Lag
 document.getElementById('defaultLagSlider').addEventListener('input', (e) => {
     document.getElementById('defaultLagValue').textContent = e.target.value + '%';
 });
@@ -189,7 +236,6 @@ document.getElementById('saveLagBtn').addEventListener('click', async () => {
     }
 });
 
-// Session Timeout
 document.getElementById('sessionTimeout').addEventListener('change', async () => {
     const timeout = document.getElementById('sessionTimeout').value;
     
@@ -215,37 +261,6 @@ document.getElementById('sessionTimeout').addEventListener('change', async () =>
 // ===== LOAD DATA =====
 async function loadAllData() {
     if (!adminToken) {
-        // Try to login as admin
-        const password = prompt('Enter admin password to access controls:');
-        if (password) {
-            try {
-                const response = await fetch('/api/auth', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        hwid: 'owner', 
-                        password: password 
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    adminToken = data.token;
-                    currentUser = data.user;
-                    localStorage.setItem('adminToken', adminToken);
-                    userDisplay.textContent = '👑 ' + (data.user.username || 'Owner');
-                    loadAllData();
-                    return;
-                } else {
-                    alert('Invalid admin password');
-                    return;
-                }
-            } catch (error) {
-                alert('Connection error');
-                return;
-            }
-        }
         return;
     }
     
@@ -271,7 +286,6 @@ async function loadAllData() {
             updateStats(users);
         }
         
-        // Update status
         statusText.textContent = 'Online';
         statusText.className = 'status-online';
         
@@ -453,16 +467,16 @@ async function updateLag(slider) {
 }
 
 // ===== AUTO-REFRESH =====
-setInterval(loadAllData, 10000); // Refresh every 10 seconds
+setInterval(loadAllData, 10000);
 
 // ===== LOAD ON START =====
 if (localStorage.getItem('siteToken')) {
     document.getElementById('gateBox').style.display = 'none';
     document.getElementById('mainApp').style.display = 'block';
-    loadAllData();
+    document.getElementById('adminLoginOverlay').style.display = 'flex';
+    document.getElementById('adminPasswordInput').focus();
 }
 
-// Make functions global
 window.crashUser = crashUser;
 window.kickUser = kickUser;
 window.removeOwner = removeOwner;

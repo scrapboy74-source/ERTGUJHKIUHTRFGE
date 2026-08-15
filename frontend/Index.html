@@ -19,6 +19,19 @@
     <div id="gateError" class="gate-error"></div>
 </div>
 
+<!-- ADMIN LOGIN OVERLAY -->
+<div id="adminLoginOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; display:none; align-items:center; justify-content:center;">
+    <div class="gate" style="position:static; transform:none;">
+        <h1>Admin Login</h1>
+        <p>Enter admin password to access controls</p>
+        <form id="adminLoginForm">
+            <input type="password" id="adminPasswordInput" placeholder="Admin Password" autofocus>
+            <button type="submit" id="adminLoginBtn">Login</button>
+        </form>
+        <div id="adminLoginError" class="gate-error"></div>
+    </div>
+</div>
+
 <!-- MAIN APP -->
 <div id="mainApp" style="display:none;">
     <!-- Top Bar -->
