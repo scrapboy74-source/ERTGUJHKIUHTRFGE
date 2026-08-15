@@ -54,92 +54,548 @@
             border-radius: 4px;
             font-size: 14px;
             cursor: pointer;
-            transition: background 0.15s;
         }
         .gate button:hover { background: #252525; }
         .gate-error {
             color: #ff3b3b;
             font-size: 13px;
             margin-top: 12px;
-            min-height: 20px;
         }
-        .loading {
-            color: #666;
+        #mainApp {
+            display: none;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0 20px 0;
+            border-bottom: 1px solid #141414;
+            margin-bottom: 24px;
+        }
+        .logo { font-weight: 300; font-size: 18px; letter-spacing: 3px; color: #e0e0e0; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #333; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .stat-item {
+            background: #111;
+            padding: 14px 18px;
+            border: 1px solid #161616;
+            border-radius: 4px;
+        }
+        .stat-label { display: block; font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-value { display: block; font-size: 24px; font-weight: 300; color: #e0e0e0; margin-top: 2px; }
+        .toolbar { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn {
+            padding: 6px 18px;
+            border: none;
+            border-radius: 3px;
             font-size: 13px;
-            margin-top: 12px;
-            text-align: center;
+            cursor: pointer;
+            background: #161616;
+            color: #c8c8c8;
         }
+        .btn:hover { background: #222; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { border-bottom: 1px solid #161616; }
+        th { text-align: left; font-weight: 400; font-size: 12px; color: #555; padding: 10px 12px; }
+        td { padding: 10px 12px; border-bottom: 1px solid #101010; font-size: 13px; }
+        tr:hover td { background: #0f0f0f; }
+        .empty-state { text-align: center; color: #333; padding: 40px; }
+        .status-badge { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 2px; }
+        .status-badge.online { color: #2ecc71; background: #0a1a0a; }
+        .status-badge.offline { color: #444; background: #111; }
+        .actions-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+        .action-btn {
+            background: transparent;
+            border: 1px solid #1a1a1a;
+            color: #666;
+            padding: 3px 10px;
+            font-size: 12px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .action-btn:hover { border-color: #2a2a2a; color: #999; }
+        .action-btn.danger:hover { border-color: #ff3b3b; color: #ff3b3b; }
+        .lag-slider { width: 80px; background: #111; accent-color: #333; }
+        .kick-input {
+            background: #0a0a0a;
+            border: 1px solid #161616;
+            color: #c8c8c8;
+            padding: 3px 8px;
+            font-size: 12px;
+            border-radius: 3px;
+            width: 140px;
+            outline: none;
+        }
+        .kick-input:focus { border-color: #222; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-box {
+            background: #111;
+            padding: 30px;
+            border-radius: 4px;
+            width: 380px;
+            max-width: 90%;
+            border: 1px solid #1a1a1a;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            color: #e0e0e0;
+            font-size: 16px;
+        }
+        .modal-close { cursor: pointer; color: #444; font-size: 20px; }
+        .modal-close:hover { color: #888; }
+        .modal-box input {
+            width: 100%;
+            padding: 10px 14px;
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
+            color: #c8c8c8;
+            border-radius: 3px;
+            font-size: 13px;
+            outline: none;
+            margin-bottom: 12px;
+        }
+        .modal-box input:focus { border-color: #222; }
+        .modal-box .btn { width: 100%; padding: 10px; margin-top: 4px; }
+        .logout-btn {
+            background: transparent;
+            border: none;
+            color: #444;
+            font-size: 13px;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+        .logout-btn:hover { color: #888; }
+        .header-right { display: flex; align-items: center; gap: 16px; }
     </style>
 </head>
 <body>
-    <div class="gate" id="gateBox">
-        <h1>Access</h1>
-        <p>Enter password to continue</p>
-        <form id="gateForm">
-            <input type="password" id="gatePassword" placeholder="Password" autofocus>
-            <button type="submit" id="unlockBtn">Unlock</button>
-        </form>
-        <div id="gateError" class="gate-error"></div>
-        <div id="loadingText" class="loading" style="display:none;">Loading...</div>
+
+<!-- PASSWORD GATE -->
+<div id="gateBox" class="gate">
+    <h1>Access</h1>
+    <p>Enter password to continue</p>
+    <form id="gateForm">
+        <input type="password" id="gatePassword" placeholder="Password" autofocus>
+        <button type="submit" id="unlockBtn">Unlock</button>
+    </form>
+    <div id="gateError" class="gate-error"></div>
+</div>
+
+<!-- MAIN APP (hidden until password is correct) -->
+<div id="mainApp">
+    <div class="header">
+        <span class="logo">Control</span>
+        <div class="header-right">
+            <span class="status-dot" id="connectionStatus"></span>
+            <button class="logout-btn" id="logoutBtn">Exit</button>
+        </div>
     </div>
 
-    <script>
-        // Check if already logged in
-        if (document.cookie.includes('siteSession=')) {
-            window.location.href = '/index.html';
-        }
+    <div class="stats-grid">
+        <div class="stat-item">
+            <span class="stat-label">Registered</span>
+            <span class="stat-value" id="totalUsers">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Connected</span>
+            <span class="stat-value" id="activeUsers">0</span>
+        </div>
+    </div>
 
-        document.getElementById('gateForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
+    <div class="toolbar">
+        <button class="btn btn-add" id="addUserBtn">Add User</button>
+        <button class="btn btn-refresh" id="refreshBtn">Refresh</button>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>HWID</th>
+                    <th>Status</th>
+                    <th>Lag</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody">
+                <tr><td colspan="5" class="empty-state">No users registered</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div id="addUserModal" class="modal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span>Add User</span>
+            <span class="modal-close" id="modalClose">&times;</span>
+        </div>
+        <form id="addUserForm">
+            <input type="text" id="hwidInput" placeholder="HWID" required>
+            <input type="text" id="usernameInput" placeholder="Username (optional)">
+            <button type="submit" class="btn btn-add">Add User</button>
+        </form>
+    </div>
+</div>
+
+<script>
+// ===== PASSWORD GATE LOGIC =====
+document.getElementById('gateForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const password = document.getElementById('gatePassword').value;
+    const errorEl = document.getElementById('gateError');
+    const btn = document.getElementById('unlockBtn');
+    
+    if (!password) {
+        errorEl.textContent = 'Please enter password';
+        return;
+    }
+    
+    errorEl.textContent = '';
+    btn.textContent = 'Checking...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/site-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Hide gate, show app
+            document.getElementById('gateBox').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
             
-            const password = document.getElementById('gatePassword').value;
-            const errorEl = document.getElementById('gateError');
-            const loadingEl = document.getElementById('loadingText');
-            const submitBtn = document.getElementById('unlockBtn');
+            // Store token for later use
+            localStorage.setItem('siteToken', data.token);
             
-            if (!password) {
-                errorEl.textContent = 'Please enter password';
-                return;
-            }
-            
-            errorEl.textContent = '';
-            loadingEl.style.display = 'block';
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Checking...';
-            
-            try {
-                const response = await fetch('/api/site-auth', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ password })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    // Set cookie and redirect
-                    document.cookie = `siteSession=${data.token}; path=/; max-age=3600`;
-                    loadingEl.textContent = 'Access granted! Redirecting...';
-                    setTimeout(() => {
-                        window.location.href = '/index.html';
-                    }, 500);
-                } else {
-                    errorEl.textContent = 'Invalid password';
-                    document.getElementById('gatePassword').value = '';
-                    document.getElementById('gatePassword').focus();
-                    loadingEl.style.display = 'none';
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Unlock';
-                }
-            } catch (err) {
-                errorEl.textContent = 'Connection error. Try again.';
-                loadingEl.style.display = 'none';
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Unlock';
+            // Load users
+            loadUsers();
+        } else {
+            errorEl.textContent = 'Invalid password';
+            document.getElementById('gatePassword').value = '';
+            document.getElementById('gatePassword').focus();
+            btn.textContent = 'Unlock';
+            btn.disabled = false;
+        }
+    } catch (err) {
+        errorEl.textContent = 'Connection error. Try again.';
+        btn.textContent = 'Unlock';
+        btn.disabled = false;
+    }
+});
+
+// ===== MAIN APP LOGIC =====
+let adminToken = null;
+let currentUser = null;
+
+// Check if already logged in (from localStorage)
+const savedToken = localStorage.getItem('adminToken');
+if (savedToken) {
+    adminToken = savedToken;
+}
+
+// DOM elements
+const userTableBody = document.getElementById('userTableBody');
+const totalUsersSpan = document.getElementById('totalUsers');
+const activeUsersSpan = document.getElementById('activeUsers');
+const statusDot = document.getElementById('connectionStatus');
+
+// Event listeners
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('siteToken');
+    document.getElementById('mainApp').style.display = 'none';
+    document.getElementById('gateBox').style.display = 'block';
+    document.getElementById('gatePassword').value = '';
+    document.getElementById('gatePassword').focus();
+});
+
+document.getElementById('addUserBtn').addEventListener('click', () => {
+    if (!adminToken) {
+        alert('Login required. Enter admin password.');
+        return;
+    }
+    document.getElementById('addUserModal').style.display = 'flex';
+});
+
+document.getElementById('refreshBtn').addEventListener('click', loadUsers);
+
+document.getElementById('modalClose').addEventListener('click', () => {
+    document.getElementById('addUserModal').style.display = 'none';
+});
+
+window.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('addUserModal')) {
+        document.getElementById('addUserModal').style.display = 'none';
+    }
+});
+
+// Add user form
+document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const hwid = document.getElementById('hwidInput').value.trim();
+    const username = document.getElementById('usernameInput').value.trim();
+    
+    if (!hwid) {
+        alert('HWID is required');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/users/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ hwid, username })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('addUserModal').style.display = 'none';
+            document.getElementById('hwidInput').value = '';
+            document.getElementById('usernameInput').value = '';
+            loadUsers();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Connection error');
+    }
+});
+
+// Load users
+async function loadUsers() {
+    if (!adminToken) {
+        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Login required</td></tr>';
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/users', {
+            headers: {
+                'Authorization': `Bearer ${adminToken}`
             }
         });
-    </script>
+        
+        if (response.status === 401) {
+            localStorage.removeItem('adminToken');
+            adminToken = null;
+            userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Session expired - login again</td></tr>';
+            statusDot.className = 'status-dot offline';
+            return;
+        }
+        
+        const users = await response.json();
+        displayUsers(users);
+        
+        // Get stats
+        const statsResponse = await fetch('/api/stats', {
+            headers: {
+                'Authorization': `Bearer ${adminToken}`
+            }
+        });
+        
+        if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            totalUsersSpan.textContent = stats.totalUsers || 0;
+            activeUsersSpan.textContent = stats.activeUsers || 0;
+            
+            if (stats.activeUsers > 0) {
+                statusDot.className = 'status-dot online';
+            } else {
+                statusDot.className = 'status-dot offline';
+            }
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Connection error</td></tr>';
+    }
+}
+
+function displayUsers(users) {
+    if (!users || users.length === 0) {
+        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No users registered</td></tr>';
+        return;
+    }
+    
+    userTableBody.innerHTML = users.map(user => `
+        <tr>
+            <td>${user.username || 'Unknown'}</td>
+            <td style="font-size:12px;color:#555;">${user.hwid.slice(0, 16)}...</td>
+            <td>
+                <span class="status-badge ${user.isActive ? 'online' : 'offline'}">
+                    ${user.isActive ? 'Connected' : 'Offline'}
+                </span>
+                ${user.isOwner ? ' <span style="color:#333;">*</span>' : ''}
+            </td>
+            <td>
+                <input type="range" 
+                       class="lag-slider" 
+                       min="0" 
+                       max="100" 
+                       value="${user.settings?.lagPercentage || 0}"
+                       data-userid="${user.id}"
+                       onchange="updateLag(this)"
+                       ${!currentUser?.isOwner ? 'disabled' : ''}>
+                <span style="font-size:12px;color:#555;margin-left:6px;">${user.settings?.lagPercentage || 0}%</span>
+            </td>
+            <td>
+                <div class="actions-cell">
+                    ${currentUser?.isOwner ? `
+                        <button class="action-btn danger" onclick="crashUser('${user.id}')">Crash</button>
+                        <input type="text" 
+                               class="kick-input" 
+                               placeholder="Kick message"
+                               id="kickMsg_${user.id}"
+                               value="${user.settings?.kickMessage || ''}">
+                        <button class="action-btn" onclick="kickUser('${user.id}')">Kick</button>
+                        <button class="action-btn danger" onclick="removeUser('${user.id}')">Remove</button>
+                    ` : `
+                        <span style="color:#333;font-size:12px;">Restricted</span>
+                    `}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Actions
+async function crashUser(userId) {
+    if (!confirm('Crash this user?')) return;
+    
+    try {
+        const response = await fetch(`/api/users/${userId}/crash`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${adminToken}`
+            }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            loadUsers();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Connection error');
+    }
+}
+
+async function kickUser(userId) {
+    const messageInput = document.getElementById(`kickMsg_${userId}`);
+    const message = messageInput?.value || 'Connection lost';
+    
+    if (!confirm(`Kick user?`)) return;
+    
+    try {
+        const response = await fetch(`/api/users/${userId}/kick`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ message })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            loadUsers();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Connection error');
+    }
+}
+
+async function removeUser(userId) {
+    if (!confirm('Remove this user?')) return;
+    
+    try {
+        const response = await fetch(`/api/users/${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${adminToken}`
+            }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            loadUsers();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Connection error');
+    }
+}
+
+async function updateLag(slider) {
+    if (!adminToken || !currentUser?.isOwner) return;
+    
+    const userId = slider.dataset.userid;
+    const value = parseInt(slider.value);
+    
+    try {
+        await fetch(`/api/users/${userId}/settings`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ lagPercentage: value })
+        });
+    } catch (error) {
+        console.error('Error updating lag:', error);
+    }
+}
+
+// Make functions global
+window.crashUser = crashUser;
+window.kickUser = kickUser;
+window.removeUser = removeUser;
+window.updateLag = updateLag;
+
+// If site token exists, show app immediately
+if (localStorage.getItem('siteToken')) {
+    document.getElementById('gateBox').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    loadUsers();
+}
+</script>
 </body>
 </html>
