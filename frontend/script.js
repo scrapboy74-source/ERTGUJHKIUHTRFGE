@@ -1,76 +1,75 @@
+// Check if we have site session (cookie)
+function checkSiteSession() {
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+        if (cookie.trim().startsWith('siteSession=')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// If no site session, redirect to gate
+if (!checkSiteSession()) {
+    window.location.href = '/gate.html';
+}
+
 let currentToken = null;
 let currentUser = null;
 
 // DOM Elements
-const statusText = document.getElementById('statusText');
-const loginBtn = document.getElementById('loginBtn');
-const loginModal = document.getElementById('loginModal');
-const addUserModal = document.getElementById('addUserModal');
+const statusDot = document.getElementById('connectionStatus');
 const userTableBody = document.getElementById('userTableBody');
 const totalUsersSpan = document.getElementById('totalUsers');
 const activeUsersSpan = document.getElementById('activeUsers');
 
-// Check for saved token
-const savedToken = localStorage.getItem('crasherToken');
+// Check for saved admin token
+const savedToken = localStorage.getItem('adminToken');
 if (savedToken) {
     currentToken = savedToken;
-    updateUI(true);
     fetchUsers();
 }
 
 // Event Listeners
-loginBtn.addEventListener('click', () => {
-    loginModal.style.display = 'flex';
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('adminToken');
+    currentToken = null;
+    // Clear site session too
+    document.cookie = 'siteSession=; path=/; max-age=0';
+    window.location.href = '/gate.html';
 });
 
-document.querySelectorAll('.close').forEach(el => {
-    el.addEventListener('click', () => {
-        loginModal.style.display = 'none';
-        addUserModal.style.display = 'none';
-    });
+document.getElementById('addUserBtn').addEventListener('click', () => {
+    if (!currentToken) {
+        alert('Login required');
+        return;
+    }
+    document.getElementById('addUserModal').style.display = 'flex';
+});
+
+document.getElementById('refreshBtn').addEventListener('click', fetchUsers);
+
+// Modal close
+document.querySelector('.modal-close')?.addEventListener('click', () => {
+    document.getElementById('addUserModal').style.display = 'none';
 });
 
 window.addEventListener('click', (e) => {
-    if (e.target === loginModal) loginModal.style.display = 'none';
-    if (e.target === addUserModal) addUserModal.style.display = 'none';
-});
-
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const password = document.getElementById('passwordInput').value;
-    
-    try {
-        const response = await fetch('/api/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                hwid: 'owner', 
-                password: password 
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            currentToken = data.token;
-            currentUser = data.user;
-            localStorage.setItem('crasherToken', currentToken);
-            updateUI(true);
-            loginModal.style.display = 'none';
-            fetchUsers();
-            document.getElementById('passwordInput').value = '';
-        } else {
-            alert('Invalid password!');
-        }
-    } catch (error) {
-        alert('Login failed: ' + error.message);
+    if (e.target === document.getElementById('addUserModal')) {
+        document.getElementById('addUserModal').style.display = 'none';
     }
 });
 
+// Add user form
 document.getElementById('addUserForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const hwid = document.getElementById('hwidInput').value;
-    const username = document.getElementById('usernameInput').value;
+    const hwid = document.getElementById('hwidInput').value.trim();
+    const username = document.getElementById('usernameInput').value.trim();
+    
+    if (!hwid) {
+        alert('HWID is required');
+        return;
+    }
     
     try {
         const response = await fetch('/api/users/add', {
@@ -85,54 +84,22 @@ document.getElementById('addUserForm').addEventListener('submit', async (e) => {
         const data = await response.json();
         
         if (data.success) {
-            alert('User added successfully!');
+            document.getElementById('addUserModal').style.display = 'none';
             document.getElementById('hwidInput').value = '';
             document.getElementById('usernameInput').value = '';
-            addUserModal.style.display = 'none';
             fetchUsers();
         } else {
-            alert('Failed to add user: ' + data.error);
+            alert('Error: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        alert('Connection error');
     }
 });
 
-document.getElementById('addUserBtn').addEventListener('click', () => {
-    if (!currentToken) {
-        alert('Please login as owner first!');
-        return;
-    }
-    addUserModal.style.display = 'flex';
-});
-
-document.getElementById('refreshBtn').addEventListener('click', fetchUsers);
-
-// Functions
-function updateUI(isAuthenticated) {
-    if (isAuthenticated) {
-        statusText.textContent = '✅ Authenticated';
-        statusText.style.color = '#48bb78';
-        loginBtn.textContent = 'Logout';
-        loginBtn.onclick = () => {
-            localStorage.removeItem('crasherToken');
-            currentToken = null;
-            updateUI(false);
-            userTableBody.innerHTML = '<tr><td colspan="5" class="no-data">Please login to view users</td></tr>';
-        };
-    } else {
-        statusText.textContent = '🔴 Not Authenticated';
-        statusText.style.color = '#f56565';
-        loginBtn.textContent = 'Login';
-        loginBtn.onclick = () => {
-            loginModal.style.display = 'flex';
-        };
-    }
-}
-
+// Fetch users
 async function fetchUsers() {
     if (!currentToken) {
-        userTableBody.innerHTML = '<tr><td colspan="5" class="no-data">Please login to view users</td></tr>';
+        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Login required</td></tr>';
         return;
     }
     
@@ -144,17 +111,17 @@ async function fetchUsers() {
         });
         
         if (response.status === 401) {
-            localStorage.removeItem('crasherToken');
+            localStorage.removeItem('adminToken');
             currentToken = null;
-            updateUI(false);
-            alert('Session expired. Please login again.');
+            userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Session expired</td></tr>';
+            statusDot.className = 'status-dot offline';
             return;
         }
         
         const users = await response.json();
         displayUsers(users);
         
-        // Fetch stats
+        // Get stats
         const statsResponse = await fetch('/api/stats', {
             headers: {
                 'Authorization': `Bearer ${currentToken}`
@@ -163,65 +130,62 @@ async function fetchUsers() {
         
         if (statsResponse.ok) {
             const stats = await statsResponse.json();
-            totalUsersSpan.textContent = stats.totalUsers;
-            activeUsersSpan.textContent = stats.activeUsers;
+            totalUsersSpan.textContent = stats.totalUsers || 0;
+            activeUsersSpan.textContent = stats.activeUsers || 0;
+            
+            // Update status dot
+            if (stats.activeUsers > 0) {
+                statusDot.className = 'status-dot online';
+            } else {
+                statusDot.className = 'status-dot offline';
+            }
         }
     } catch (error) {
-        console.error('Error fetching users:', error);
-        userTableBody.innerHTML = '<tr><td colspan="5" class="no-data">Error loading users</td></tr>';
+        console.error('Error:', error);
+        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Connection error</td></tr>';
     }
 }
 
 function displayUsers(users) {
     if (!users || users.length === 0) {
-        userTableBody.innerHTML = '<tr><td colspan="5" class="no-data">No users found</td></tr>';
+        userTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No users registered</td></tr>';
         return;
     }
     
     userTableBody.innerHTML = users.map(user => `
         <tr>
-            <td><strong>${user.username}</strong></td>
-            <td><code style="font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 4px;">${user.hwid.slice(0, 16)}...</code></td>
+            <td>${user.username || 'Unknown'}</td>
+            <td style="font-size:12px;color:#555;">${user.hwid.slice(0, 16)}...</td>
             <td>
-                <span class="status-badge ${user.isActive ? 'status-active' : 'status-inactive'}">
-                    ${user.isActive ? '🟢 Active' : '🔴 Offline'}
+                <span class="status-badge ${user.isActive ? 'online' : 'offline'}">
+                    ${user.isActive ? 'Connected' : 'Offline'}
                 </span>
-                ${user.isOwner ? ' 👑' : ''}
+                ${user.isOwner ? ' <span style="color:#333;">*</span>' : ''}
             </td>
             <td>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="range" 
-                           class="lag-slider" 
-                           min="0" 
-                           max="100" 
-                           value="${user.settings.lagPercentage}"
-                           data-userid="${user.id}"
-                           onchange="updateLag(this)"
-                           ${!currentUser?.isOwner ? 'disabled' : ''}>
-                    <span style="font-weight: bold;">${user.settings.lagPercentage}%</span>
-                </div>
+                <input type="range" 
+                       class="lag-slider" 
+                       min="0" 
+                       max="100" 
+                       value="${user.settings?.lagPercentage || 0}"
+                       data-userid="${user.id}"
+                       onchange="updateLag(this)"
+                       ${!currentUser?.isOwner ? 'disabled' : ''}>
+                <span style="font-size:12px;color:#555;margin-left:6px;">${user.settings?.lagPercentage || 0}%</span>
             </td>
             <td>
                 <div class="actions-cell">
                     ${currentUser?.isOwner ? `
-                        <button class="btn btn-danger btn-sm" onclick="crashUser('${user.id}')">
-                            💥 Crash
-                        </button>
-                        <div style="display: flex; gap: 5px; align-items: center;">
-                            <input type="text" 
-                                   class="kick-input" 
-                                   placeholder="Kick message"
-                                   id="kickMsg_${user.id}"
-                                   value="${user.settings.kickMessage || ''}">
-                            <button class="btn btn-warning btn-sm" onclick="kickUser('${user.id}')">
-                                🚫 Kick
-                            </button>
-                        </div>
-                        <button class="btn btn-danger btn-sm" onclick="removeUser('${user.id}')">
-                            🗑️ Remove
-                        </button>
+                        <button class="action-btn danger" onclick="crashUser('${user.id}')">Crash</button>
+                        <input type="text" 
+                               class="kick-input" 
+                               placeholder="Kick message"
+                               id="kickMsg_${user.id}"
+                               value="${user.settings?.kickMessage || ''}">
+                        <button class="action-btn" onclick="kickUser('${user.id}')">Kick</button>
+                        <button class="action-btn danger" onclick="removeUser('${user.id}')">Remove</button>
                     ` : `
-                        <span style="color: #a0aec0; font-size: 12px;">Owner only</span>
+                        <span style="color:#333;font-size:12px;">Restricted</span>
                     `}
                 </div>
             </td>
@@ -229,32 +193,9 @@ function displayUsers(users) {
     `).join('');
 }
 
-async function updateLag(slider) {
-    if (!currentToken || !currentUser?.isOwner) return;
-    
-    const userId = slider.dataset.userid;
-    const value = parseInt(slider.value);
-    
-    try {
-        const response = await fetch(`/api/users/${userId}/settings`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${currentToken}`
-            },
-            body: JSON.stringify({ lagPercentage: value })
-        });
-        
-        if (!response.ok) {
-            alert('Failed to update lag settings');
-        }
-    } catch (error) {
-        console.error('Error updating lag:', error);
-    }
-}
-
+// Actions
 async function crashUser(userId) {
-    if (!confirm('Are you sure you want to crash this user?')) return;
+    if (!confirm('Crash this user?')) return;
     
     try {
         const response = await fetch(`/api/users/${userId}/crash`, {
@@ -265,23 +206,21 @@ async function crashUser(userId) {
         });
         
         const data = await response.json();
-        
         if (data.success) {
-            alert('✅ Crash triggered successfully!');
             fetchUsers();
         } else {
-            alert('❌ Failed to crash user: ' + data.error);
+            alert('Error: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        alert('Connection error');
     }
 }
 
 async function kickUser(userId) {
     const messageInput = document.getElementById(`kickMsg_${userId}`);
-    const message = messageInput?.value || 'Your connection has been lost. Please try again later.';
+    const message = messageInput?.value || 'Connection lost';
     
-    if (!confirm(`Kick this user with message: "${message}"?`)) return;
+    if (!confirm(`Kick user?`)) return;
     
     try {
         const response = await fetch(`/api/users/${userId}/kick`, {
@@ -294,20 +233,18 @@ async function kickUser(userId) {
         });
         
         const data = await response.json();
-        
         if (data.success) {
-            alert('✅ User kicked successfully!');
             fetchUsers();
         } else {
-            alert('❌ Failed to kick user: ' + data.error);
+            alert('Error: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        alert('Connection error');
     }
 }
 
 async function removeUser(userId) {
-    if (!confirm('Are you sure you want to remove this user permanently?')) return;
+    if (!confirm('Remove this user?')) return;
     
     try {
         const response = await fetch(`/api/users/${userId}`, {
@@ -318,25 +255,38 @@ async function removeUser(userId) {
         });
         
         const data = await response.json();
-        
         if (data.success) {
-            alert('✅ User removed successfully!');
             fetchUsers();
         } else {
-            alert('❌ Failed to remove user: ' + data.error);
+            alert('Error: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        alert('Connection error');
     }
 }
 
-// Make functions globally accessible
+async function updateLag(slider) {
+    if (!currentToken || !currentUser?.isOwner) return;
+    
+    const userId = slider.dataset.userid;
+    const value = parseInt(slider.value);
+    
+    try {
+        await fetch(`/api/users/${userId}/settings`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentToken}`
+            },
+            body: JSON.stringify({ lagPercentage: value })
+        });
+    } catch (error) {
+        console.error('Error updating lag:', error);
+    }
+}
+
+// Make functions global
 window.crashUser = crashUser;
 window.kickUser = kickUser;
 window.removeUser = removeUser;
 window.updateLag = updateLag;
-
-// Initial fetch
-if (currentToken) {
-    fetchUsers();
-}
