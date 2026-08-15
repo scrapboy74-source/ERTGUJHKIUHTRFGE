@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roblox Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hate.vs</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <!-- PASSWORD GATE -->
 <div id="gateBox" class="gate">
-    <h1>Access</h1>
-    <p>Enter password to continue</p>
+    <div class="gate-icon">⚡</div>
+    <h1>Hate.vs</h1>
+    <p>Enter access code</p>
     <form id="gateForm">
-        <input type="password" id="gatePassword" placeholder="Password" autofocus>
+        <input type="password" id="gatePassword" placeholder="Access code" autofocus>
         <button type="submit" id="unlockBtn">Unlock</button>
     </form>
     <div id="gateError" class="gate-error"></div>
@@ -22,10 +24,12 @@
 <!-- ADMIN LOGIN OVERLAY -->
 <div id="adminLoginOverlay" class="admin-overlay">
     <div class="gate">
+        <div class="gate-icon">🔑</div>
         <h1>Admin Login</h1>
-        <p>Enter admin password to access controls</p>
+        <p>Enter admin credentials</p>
         <form id="adminLoginForm">
-            <input type="password" id="adminPasswordInput" placeholder="Admin Password" autofocus>
+            <input type="text" id="adminUsernameInput" placeholder="Username" autofocus>
+            <input type="password" id="adminPasswordInput" placeholder="Password">
             <button type="submit" id="adminLoginBtn">Login</button>
         </form>
         <div id="adminLoginError" class="gate-error"></div>
@@ -36,36 +40,99 @@
 <div id="mainApp">
     <!-- Top Bar -->
     <div class="topbar">
-        <div class="logo">Roblox Control</div>
+        <div class="logo">
+            <span class="logo-icon">⚡</span>
+            Hate.vs
+        </div>
         <div class="topbar-right">
-            <span id="statusText" class="status-offline">Offline</span>
+            <span class="status-dot" id="connectionStatus"></span>
             <span id="userDisplay" class="user-display"></span>
-            <button id="logoutBtn" class="btn logout-btn">Logout</button>
+            <button id="logoutBtn" class="btn logout-btn">Exit</button>
         </div>
     </div>
 
     <!-- Tabs -->
     <div class="tabs">
-        <button class="tab-btn active" data-tab="owners">Owners</button>
-        <button class="tab-btn" data-tab="users">Users</button>
-        <button class="tab-btn" data-tab="settings">Settings</button>
+        <button class="tab-btn active" data-tab="dashboard">
+            <span class="tab-icon">📊</span>
+            Dashboard
+        </button>
+        <button class="tab-btn" data-tab="owners">
+            <span class="tab-icon">👑</span>
+            Owners
+        </button>
+        <button class="tab-btn" data-tab="users">
+            <span class="tab-icon">👤</span>
+            Users
+        </button>
+        <button class="tab-btn" data-tab="settings">
+            <span class="tab-icon">⚙️</span>
+            Settings
+        </button>
     </div>
 
-    <!-- TAB 1: OWNERS -->
-    <div id="tab-owners" class="tab-content active">
+    <!-- TAB 1: DASHBOARD -->
+    <div id="tab-dashboard" class="tab-content active">
+        <div class="tab-header">
+            <h2>Dashboard</h2>
+            <p>Real-time overview of your control panel</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-label">Total Users</span>
+                <span class="stat-value" id="totalUsers">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Online Now</span>
+                <span class="stat-value" id="onlineUsers">0</span>
+                <span class="stat-sub" id="onlinePercent">0%</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Owners</span>
+                <span class="stat-value" id="totalOwners">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Status</span>
+                <span class="stat-value" id="serverStatus">🟢 Online</span>
+            </div>
+        </div>
+
+        <div class="quick-actions">
+            <h3>Quick Actions</h3>
+            <div class="quick-grid">
+                <div class="quick-card" onclick="document.querySelector('[data-tab=users]').click()">
+                    <span class="quick-icon">👤</span>
+                    <span>Manage Users</span>
+                </div>
+                <div class="quick-card" onclick="document.querySelector('[data-tab=owners]').click()">
+                    <span class="quick-icon">👑</span>
+                    <span>Add Owner</span>
+                </div>
+                <div class="quick-card" onclick="document.querySelector('[data-tab=settings]').click()">
+                    <span class="quick-icon">⚙️</span>
+                    <span>Settings</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: OWNERS -->
+    <div id="tab-owners" class="tab-content">
         <div class="tab-header">
             <h2>Script Owners</h2>
             <p>Add Roblox usernames to grant owner access</p>
         </div>
         <div class="add-owner-form">
             <input type="text" id="ownerUsernameInput" placeholder="Roblox Username" class="input-field">
+            <input type="password" id="ownerPasswordInput" placeholder="Set Password (optional)" class="input-field">
             <button id="addOwnerBtn" class="btn btn-primary">Add Owner</button>
         </div>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
-                        <th>Roblox Username</th>
+                        <th>Username</th>
                         <th>HWID</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -78,49 +145,36 @@
         </div>
     </div>
 
-    <!-- TAB 2: USERS -->
+    <!-- TAB 3: USERS -->
     <div id="tab-users" class="tab-content">
         <div class="tab-header">
             <h2>Active Users</h2>
             <p>All users currently executing the script</p>
         </div>
-        <div class="stats-grid">
-            <div class="stat-item">
-                <span class="stat-label">Online</span>
-                <span class="stat-value" id="onlineUsers">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Offline</span>
-                <span class="stat-value" id="offlineUsers">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Total</span>
-                <span class="stat-value" id="totalUsers">0</span>
-            </div>
-        </div>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
-                        <th>Roblox Username</th>
+                        <th>User</th>
                         <th>HWID</th>
                         <th>Status</th>
                         <th>Lag</th>
+                        <th>Freeze</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="usersTableBody">
-                    <tr><td colspan="5" class="empty-state">No users executing script</td></tr>
+                    <tr><td colspan="6" class="empty-state">No users executing script</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
-    <!-- TAB 3: SETTINGS -->
+    <!-- TAB 4: SETTINGS -->
     <div id="tab-settings" class="tab-content">
         <div class="tab-header">
             <h2>Settings</h2>
-            <p>Configure default kick messages and lag settings</p>
+            <p>Configure default messages and control settings</p>
         </div>
         
         <div class="settings-section">
@@ -131,10 +185,10 @@
                 <button id="saveKickMsgBtn" class="btn btn-primary">Save</button>
             </div>
             <div class="preset-messages">
-                <button class="preset-btn" data-msg="Your connection has been lost. Please try again later.">Connection Lost</button>
-                <button class="preset-btn" data-msg="You have been kicked from the game.">Kicked</button>
-                <button class="preset-btn" data-msg="Network error detected. Reconnecting...">Network Error</button>
-                <button class="preset-btn" data-msg="Session expired. Please rejoin.">Session Expired</button>
+                <button class="preset-btn" data-msg="You have been removed from the game.">Removed</button>
+                <button class="preset-btn" data-msg="Connection lost. Please rejoin.">Lost Connection</button>
+                <button class="preset-btn" data-msg="Session expired. Rejoin to continue.">Expired</button>
+                <button class="preset-btn" data-msg="Anti-cheat detected unusual activity.">Anti-Cheat</button>
             </div>
         </div>
 
@@ -149,17 +203,37 @@
         </div>
 
         <div class="settings-section">
-            <h3>Session Settings</h3>
-            <p class="settings-desc">Configure session timeout and auto-kick</p>
+            <h3>Default Freeze Settings</h3>
+            <p class="settings-desc">Default freeze percentage applied to new users</p>
             <div class="settings-row">
-                <label>Auto-kick inactive users after:</label>
-                <select id="sessionTimeout" class="input-field" style="width:auto;">
-                    <option value="5">5 minutes</option>
-                    <option value="10" selected>10 minutes</option>
-                    <option value="15">15 minutes</option>
-                    <option value="30">30 minutes</option>
-                    <option value="60">1 hour</option>
-                </select>
+                <input type="range" id="defaultFreezeSlider" min="0" max="100" value="30" style="flex:1;">
+                <span id="defaultFreezeValue" class="lag-value">30%</span>
+                <button id="saveFreezeBtn" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h3>Admin Accounts</h3>
+            <p class="settings-desc">Create admin accounts for your friends</p>
+            <div class="settings-row">
+                <input type="text" id="adminUserInput" placeholder="Username" class="input-field">
+                <input type="password" id="adminPassInput" placeholder="Password" class="input-field">
+                <input type="text" id="adminRobloxInput" placeholder="Roblox Username" class="input-field">
+                <button id="createAdminBtn" class="btn btn-primary">Create Admin</button>
+            </div>
+            <div class="table-container" style="margin-top:12px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Roblox</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminsTableBody">
+                        <tr><td colspan="3" class="empty-state">No admin accounts</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
